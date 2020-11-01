@@ -1,0 +1,195 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Ergin Ozcan"
+date: "31 10 2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Executive Summary
+
+This project is part of the Data Science Specialization which instructed by Johns Hopkins in the Coursera. In this project, we focus training application such as Jawbone Up, Nike FuelBand and Fitbit. Because they have huge data for exercise and nutrition. We focus people's movements. Firstly, I download important datas.
+
+
+```{r, echo=FALSE}
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", "pml-training.csv", method = "curl")
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", "pml-testing.csv", method = "curl")
+```
+
+## Loading packages and processing
+
+I want some packages which is my need it. Caret and RPart is important, but randomForest, rattle and gbm is necessary.
+
+```{r, echo=FALSE}
+library(e1071)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(RColorBrewer)
+library(rattle)
+library(randomForest)
+library(corrplot)
+library(gbm)
+```
+
+## Found and removing.
+
+Firstly, I read training and test sets. They gave 160 variables from test and training sets.
+
+```{r, echo=FALSE}
+train_in <- read.csv('./pml-training.csv', header=T)
+test_in <- read.csv('./pml-testing.csv', header=T)
+dim(train_in)
+```
+
+```{r, echo=FALSE}
+dim(test_in)
+```
+
+After that, we want to remove some variables which have missing values. After removing, we see 93 variables from training data and 60 variables from test data.
+
+```{r, echo=FALSE}
+trainData<- train_in[, colSums(is.na(train_in)) == 0]
+testData <- test_in[, colSums(is.na(test_in)) == 0]
+dim(trainData)
+```
+
+```{r, echo=FALSE}
+dim(testData)
+```
+
+After removing data, we remove first seven variables. Because these variables have little impact to "classe".
+
+```{r, echo=FALSE}
+trainData <- trainData[, -c(1:7)]
+testData <- testData[, -c(1:7)]
+dim(trainData)
+```
+
+```{r, echo=FALSE}
+dim(testData)
+```
+
+After processing. We prepare to prediction from datas. We have %70 of training datasets and %39 of test datasets. Although, we need to remove Near Zero Variance from these datasets, we have 53 variables after this removing.
+
+```{r, echo=FALSE}
+set.seed(1234) 
+inTrain <- createDataPartition(trainData$classe, p = 0.7, list = FALSE)
+trainData <- trainData[inTrain, ]
+testData <- trainData[-inTrain, ]
+dim(trainData)
+```
+
+```{r, echo=FALSE}
+dim(testData)
+```
+
+```{r, echo=FALSE}
+NZV <- nearZeroVar(trainData)
+trainData <- trainData[, -NZV]
+testData  <- testData[, -NZV]
+dim(trainData)
+```
+
+```{r, echo=FALSE}
+dim(testData)
+```
+
+Now, we create correlation plot. we need most correlated variables.
+
+```{r, echo=FALSE}
+cor_mat <- cor(trainData[, -53])
+corrplot(cor_mat, order = "FPC", method = "color", type = "upper", tl.cex = 0.8, tl.col = rgb(0, 0, 0))
+```
+
+
+
+```{r, echo=FALSE}
+highlyCorrelated = findCorrelation(cor_mat, cutoff=0.75)
+names(trainData)[highlyCorrelated]
+```
+
+## Model building
+
+In model building, we use random forest and classification trees. Firstly, I tried classification tree by fancyRpartplot. Secondly, I used random forests.
+
+```{r, echo=FALSE}
+set.seed(12345)
+decisionTreeMod1 <- rpart(classe ~ ., data=trainData, method="class")
+fancyRpartPlot(decisionTreeMod1)
+```
+
+
+
+```{r, echo=FALSE}
+testData$classe <- as.character(testData$classe)
+testData$classe <- as.factor(testData$classe)
+predictTreeMod1 <- predict(decisionTreeMod1, testData, type = "class")
+cmtree <- confusionMatrix(predictTreeMod1, testData$classe)
+cmtree
+```
+
+In results, we see 0.7642 accuracy. It was pretty average. Although
+
+```{r, echo=FALSE}
+plot(cmtree$table, col = cmtree$byClass, main = paste("Decision Tree - Accuracy =", round(cmtree$overall['Accuracy'], 4)))
+```
+
+Now, we use random forests. In this model, we see accuracy rate is nearly 1, although, rate is dramatically dropped after 30 variables.
+
+```{r, echo=FALSE}
+controlRF <- trainControl(method="cv", number=3, verboseIter=FALSE)
+modRF1 <- train(classe ~ ., data=trainData, method="rf", trControl=controlRF)
+modRF1$finalModel
+```
+
+
+
+```{r, echo=FALSE}
+predictRF1 <- predict(modRF1, newdata=testData)
+cmrf <- confusionMatrix(predictRF1, testData$classe)
+cmrf
+```
+
+
+
+```{r, echo=FALSE}
+plot(modRF1)
+```
+
+
+
+```{r, echo=FALSE}
+plot(cmrf$table, col = cmrf$byClass, main = paste("Random Forest Confusion Matrix: Accuracy =", round(cmrf$overall['Accuracy'], 4)))
+```
+
+Now, we use Generalized Boost Models.
+
+```{r, echo=FALSE}
+set.seed(12345)
+controlGBM <- trainControl(method = "repeatedcv", number = 5, repeats = 1)
+modGBM  <- train(classe ~ ., data=trainData, method = "gbm", trControl = controlGBM, verbose = FALSE)
+modGBM$finalModel
+```
+
+
+
+```{r, echo=FALSE}
+print(modGBM)
+```
+
+
+
+```{r, echo=FALSE}
+predictGBM <- predict(modGBM, newdata=testData)
+cmGBM <- confusionMatrix(predictGBM, testData$classe)
+cmGBM
+```
+
+```
+
